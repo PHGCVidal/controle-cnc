@@ -15,6 +15,8 @@ long targetY = 0;
 unsigned long lastStepTime = 0;
 unsigned int tempoEntrePassos = 2000; 
 
+bool motorAtivo = false; // controla se o driver está habilitado
+
 void setup() {
   Serial.begin(115200);
   uint32_t t0 = millis();
@@ -29,7 +31,7 @@ void setup() {
   pinMode(Y_STEP, OUTPUT);
   pinMode(Y_DIR, OUTPUT);
 
-  digitalWrite(EN_PIN, LOW); // Liga motores
+  digitalWrite(EN_PIN, HIGH); // Começa desabilitado (motor "solto", sem aquecer)
   digitalWrite(X_DIR, HIGH);
   digitalWrite(Y_DIR, LOW); 
 }
@@ -37,21 +39,18 @@ void setup() {
 void loop() {
   // 1. LER COMANDOS
   if (Serial.available() > 0) {
-    // Lê a string inteira até a quebra de linha
     String comando = Serial.readStringUntil('\n');
-    comando.trim(); // Limpa espaços e lixos do buffer
+    comando.trim();
     
     int virgulaIndex = comando.indexOf(',');
     
     if (virgulaIndex > 0) {
-      // Extrai os valores antes e depois da vírgula
       String strX = comando.substring(0, virgulaIndex);
       String strY = comando.substring(virgulaIndex + 1);
       
       targetX = strX.toInt();
       targetY = strY.toInt();
       
-      // Envia confirmação de volta!
       Serial.print("OK:X=");
       Serial.print(targetX);
       Serial.print(",Y=");
@@ -59,7 +58,18 @@ void loop() {
     }
   }
 
-  // 2. EXECUTAR OS MOVIMENTOS
+  // 2. VERIFICAR SE PRECISA HABILITAR/DESABILITAR O DRIVER
+  bool precisaMover = (currentX != targetX) || (currentY != targetY);
+
+  if (precisaMover && !motorAtivo) {
+    digitalWrite(EN_PIN, LOW);  // habilita driver (LOW = ligado no CNC Shield)
+    motorAtivo = true;
+  } else if (!precisaMover && motorAtivo) {
+    digitalWrite(EN_PIN, HIGH); // desabilita driver, motor solto, sem aquecer
+    motorAtivo = false;
+  }
+
+  // 3. EXECUTAR OS MOVIMENTOS
   unsigned long tempoAtual = micros();
   
   if (tempoAtual - lastStepTime >= tempoEntrePassos) {
