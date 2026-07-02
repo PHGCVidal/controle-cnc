@@ -1,6 +1,5 @@
 #include <Arduino.h>
 
-// Mapeamento Blindado (Shield V4 + Nano ESP32)
 #define EN_PIN    D8
 #define X_STEP    D5
 #define X_DIR     D2
@@ -13,9 +12,9 @@ long currentY = 0;
 long targetY = 0;
 
 unsigned long lastStepTime = 0;
-unsigned int tempoEntrePassos = 2000; 
+unsigned int tempoEntrePassos =200; // era 2000 - motor mais rápido
 
-bool motorAtivo = false; // controla se o driver está habilitado
+bool motorAtivo = false;
 
 void setup() {
   Serial.begin(115200);
@@ -31,13 +30,12 @@ void setup() {
   pinMode(Y_STEP, OUTPUT);
   pinMode(Y_DIR, OUTPUT);
 
-  digitalWrite(EN_PIN, HIGH); // Começa desabilitado (motor "solto", sem aquecer)
+  digitalWrite(EN_PIN, HIGH);
   digitalWrite(X_DIR, HIGH);
   digitalWrite(Y_DIR, LOW); 
 }
 
 void loop() {
-  // 1. LER COMANDOS
   if (Serial.available() > 0) {
     String comando = Serial.readStringUntil('\n');
     comando.trim();
@@ -58,18 +56,16 @@ void loop() {
     }
   }
 
-  // 2. VERIFICAR SE PRECISA HABILITAR/DESABILITAR O DRIVER
   bool precisaMover = (currentX != targetX) || (currentY != targetY);
 
   if (precisaMover && !motorAtivo) {
-    digitalWrite(EN_PIN, LOW);  // habilita driver (LOW = ligado no CNC Shield)
+    digitalWrite(EN_PIN, LOW);
     motorAtivo = true;
   } else if (!precisaMover && motorAtivo) {
-    digitalWrite(EN_PIN, HIGH); // desabilita driver, motor solto, sem aquecer
+    digitalWrite(EN_PIN, HIGH);
     motorAtivo = false;
   }
 
-  // 3. EXECUTAR OS MOVIMENTOS
   unsigned long tempoAtual = micros();
   
   if (tempoAtual - lastStepTime >= tempoEntrePassos) {
