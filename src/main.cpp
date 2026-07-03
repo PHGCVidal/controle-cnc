@@ -6,23 +6,19 @@
 #define Y_STEP    D6
 #define Y_DIR     D3
 
-long currentX = 0;
-long targetX = 0;
-long currentY = 0;
-long targetY = 0;
+// Intervalo dinâmico entre passos em microssegundos (calculado pelo PID)
+unsigned long xIntervaloMicros = 0; 
+unsigned long yIntervaloMicros = 0;
 
-unsigned long lastStepTime = 0;
-unsigned int tempoEntrePassos =200; // era 2000 - motor mais rápido
+unsigned long xLastStepTime = 0;
+unsigned long yLastStepTime = 0;
+unsigned long ultimoTempoComando = 0;
 
 bool motorAtivo = false;
 
 void setup() {
   Serial.begin(115200);
-  uint32_t t0 = millis();
-  while (!Serial && (millis() - t0 < 5000)) {
-    delay(10);
-  }
-  Serial.setTxTimeoutMs(0); 
+  Serial.setTimeout(5);
   
   pinMode(EN_PIN, OUTPUT);
   pinMode(X_STEP, OUTPUT);
@@ -30,71 +26,66 @@ void setup() {
   pinMode(Y_STEP, OUTPUT);
   pinMode(Y_DIR, OUTPUT);
 
-  digitalWrite(EN_PIN, HIGH);
-  digitalWrite(X_DIR, HIGH);
-  digitalWrite(Y_DIR, LOW); 
+  digitalWrite(EN_PIN, HIGH); // Motores desligados no início
 }
 
 void loop() {
+  // 1. LEITURA DOS COMANDOS DE VELOCIDADE DO PYTHON
+  // O Python vai mandar: "FrequenciaX,FrequenciaY\n" (ex: "500.0,-250.0\n")
   if (Serial.available() > 0) {
     String comando = Serial.readStringUntil('\n');
     comando.trim();
     
     int virgulaIndex = comando.indexOf(',');
-    
     if (virgulaIndex > 0) {
-      String strX = comando.substring(0, virgulaIndex);
-      String strY = comando.substring(virgulaIndex + 1);
+      float freqX = comando.substring(0, virgulaIndex).toFloat();
+      float freqY = comando.substring(virgulaIndex + 1).toFloat();
       
-      targetX = strX.toInt();
-      targetY = strY.toInt();
+      // Define a direção do motor X
+      digitalWrite(X_DIR, freqX >= 0 ? HIGH : LOW);
+      // Calcula o período em microssegundos (Período = 1.000.000 / Frequência)
+      xIntervaloMicros = (abs(freqX) > 1.0) ? (1000000UL / abs(freqX)) : 0;
+
+      // Define a direção do motor Y
+      digitalWrite(Y_DIR, freqY >= 0 ? HIGH : LOW);
+      yIntervaloMicros = (abs(freqY) > 1.0) ? (1000000UL / abs(freqY)) : 0;
       
-      Serial.print("OK:X=");
-      Serial.print(targetX);
-      Serial.print(",Y=");
-      Serial.println(targetY);
+      ultimoTempoComando = millis();
     }
   }
 
-  bool precisaMover = (currentX != targetX) || (currentY != targetY);
+  // 2. WATCHDOG DE SEGURANÇA
+  if (millis() - ultimoTempoComando > 1000) {
+    xIntervaloMicros = 0;
+    yIntervaloMicros = 0;
+  }
 
+  // 3. GESTÃO DE POTÊNCIA (ENABLE)
+  bool precisaMover = (xIntervaloMicros > 0) || (yIntervaloMicros > 0);
   if (precisaMover && !motorAtivo) {
-    digitalWrite(EN_PIN, LOW);
+    digitalWrite(EN_PIN, LOW); // Liga os drivers
     motorAtivo = true;
   } else if (!precisaMover && motorAtivo) {
-    digitalWrite(EN_PIN, HIGH);
+    digitalWrite(EN_PIN, HIGH); // Desliga os drivers para não esquentar
     motorAtivo = false;
   }
 
+  // 4. GERAÇÃO DE PULSOS TEMPORIZADOS (INTERPOLAÇÃO NATURAL)
   unsigned long tempoAtual = micros();
-  
-  if (tempoAtual - lastStepTime >= tempoEntrePassos) {
-    lastStepTime = tempoAtual;
-    
-    if (currentX != targetX) {
-      if (targetX > currentX) {
-        digitalWrite(X_DIR, HIGH); 
-        currentX++;
-      } else {
-        digitalWrite(X_DIR, LOW);  
-        currentX--;
-      }
-      digitalWrite(X_STEP, HIGH);
-      delayMicroseconds(2);
-      digitalWrite(X_STEP, LOW);
-    }
 
-    if (currentY != targetY) {
-      if (targetY > currentY) {
-        digitalWrite(Y_DIR, HIGH); 
-        currentY++;
-      } else {
-        digitalWrite(Y_DIR, LOW);  
-        currentY--;
-      }
-      digitalWrite(Y_STEP, HIGH);
-      delayMicroseconds(2);
-      digitalWrite(Y_STEP, LOW);
-    }
+  // Canal do Motor X
+  if (xIntervaloMicros > 0 && (tempoAtual - xLastStepTime >= xIntervaloMicros)) {
+    xLastStepTime = tempoAtual;
+    digitalWrite(X_STEP, HIGH);
+    delayMicroseconds(2);
+    digitalWrite(X_STEP, LOW);
+  }
+
+  // Canal do Motor Y
+  if (yIntervaloMicros > 0 && (tempoAtual - yLastStepTime >= yIntervaloMicros)) {
+    yLastStepTime = tempoAtual;
+    digitalWrite(Y_STEP, HIGH);
+    delayMicroseconds(2);
+    digitalWrite(Y_STEP, LOW);
   }
 }
