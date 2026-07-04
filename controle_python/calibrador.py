@@ -2,19 +2,13 @@ import cv2
 import numpy as np
 import os
 
-# =================================================================
-# CONFIGURAÇÕES DO TABULEIRO (Preencha antes de rodar!)
-# =================================================================
-# O OpenCV conta as INTERSEÇÕES internas (quinas), não os quadrados.
-# Um tabuleiro padrão de 10x7 quadrados tem 9x6 quinas internas.
+
 CHESSBOARD_CORNERS = (10, 7) 
 
-# Meça o lado de um quadradinho preto no papel impresso com um paquímetro
 SQUARE_SIZE_MM = 13.3 
 
 CAMERA_INDEX = 0
 PASTA_IMAGENS = "calib_fotos"
-# =================================================================
 
 def main():
     if not os.path.exists(PASTA_IMAGENS):
@@ -38,11 +32,9 @@ def main():
         ret, frame = cap.read()
         if not ret: break
 
-        # Faz uma cópia para não salvar a imagem com os desenhos por cima
         frame_salvar = frame.copy() 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # Tenta achar o tabuleiro em tempo real só para te dar feedback visual
         flags_ajuda = cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE + cv2.CALIB_CB_FAST_CHECK
         achou, corners = cv2.findChessboardCorners(gray, CHESSBOARD_CORNERS, flags_ajuda)
         
@@ -78,16 +70,12 @@ def main():
     if foto_count < 10:
         print("Aviso: É recomendado ter pelo menos 10 a 15 fotos para uma boa calibração!")
 
-    # =================================================================
-    # ETAPA 2: CÁLCULO MATEMÁTICO DAS MATRIZES
-    # =================================================================
-    # Prepara os pontos 3D no mundo real (0,0,0), (22.5,0,0), (45.0,0,0) ...
     objp = np.zeros((CHESSBOARD_CORNERS[0] * CHESSBOARD_CORNERS[1], 3), np.float32)
     objp[:, :2] = np.mgrid[0:CHESSBOARD_CORNERS[0], 0:CHESSBOARD_CORNERS[1]].T.reshape(-1, 2)
     objp *= SQUARE_SIZE_MM
 
-    objpoints = [] # Pontos 3D do mundo real
-    imgpoints = [] # Pontos 2D na imagem
+    objpoints = [] 
+    imgpoints = [] 
 
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
     
